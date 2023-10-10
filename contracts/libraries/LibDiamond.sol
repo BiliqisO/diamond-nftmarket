@@ -6,6 +6,7 @@ pragma solidity ^0.8.0;
 * EIP-2535 Diamonds: https://eips.ethereum.org/EIPS/eip-2535
 /******************************************************************************/
 import {IDiamondCut} from "../interfaces/IDiamondCut.sol";
+import {Order} from "../facets/OrderStruct.sol";
 
 library LibDiamond {
     error InValidFacetCutAction();
@@ -47,6 +48,20 @@ library LibDiamond {
         mapping(bytes4 => bool) supportedInterfaces;
         // owner of the contract
         address contractOwner;
+        //NFT MarketPlace
+
+        mapping(uint256 => Order) orders;
+        uint256 OrderId;
+        //ERC721
+        // Token name
+        string _name;
+        // Token symbol
+        string _symbol;
+        uint tokenId;
+        mapping(uint256 tokenId => address) _owners;
+        mapping(address owner => uint256) _balances;
+        mapping(uint256 tokenId => address) _tokenApprovals;
+        mapping(address owner => mapping(address operator => bool)) _operatorApprovals;
     }
 
     function diamondStorage()
@@ -70,6 +85,15 @@ library LibDiamond {
         address previousOwner = ds.contractOwner;
         ds.contractOwner = _newOwner;
         emit OwnershipTransferred(previousOwner, _newOwner);
+    }
+
+    function setERC721Details(
+        string memory name_,
+        string memory symbol_
+    ) internal {
+        DiamondStorage storage ds = diamondStorage();
+        ds._name = name_;
+        ds._symbol = symbol_;
     }
 
     function contractOwner() internal view returns (address contractOwner_) {
