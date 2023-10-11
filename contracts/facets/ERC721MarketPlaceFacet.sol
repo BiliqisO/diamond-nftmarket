@@ -17,6 +17,12 @@ contract ERC721MarketplaceFacet {
         bytes memory _signature,
         uint256 _deadline
     ) external {
+        IERC721 token = IERC721(_tokenAddress);
+        require(
+            token.ownerOf(_tokenId) == msg.sender,
+            "You do not own this token"
+        );
+
         LibDiamond.DiamondStorage storage _order = LibDiamond.diamondStorage();
         Order storage _ds = _order.orders[_order.OrderId];
         _order.OrderId++;

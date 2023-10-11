@@ -41,12 +41,11 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         (address _buyer, uint _buyerKey) = makeAddrAndKey("alice");
         buyer = _buyer;
         buyerKey = _buyerKey;
-        ercFacet.mint(_buyer);
 
         //upgrade diamond with facets
 
         //build cut struct
-        FacetCut[] memory cut = new FacetCut[](3);
+        FacetCut[] memory cut = new FacetCut[](4);
 
         cut[0] = (
             FacetCut({
@@ -65,9 +64,16 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         );
         cut[2] = (
             FacetCut({
-                facetAddress: address(ownerF),
+                facetAddress: address(erc721MarketPlaceFacet),
                 action: FacetCutAction.Add,
                 functionSelectors: generateSelectors("ERC721MarketplaceFacet")
+            })
+        );
+        cut[3] = (
+            FacetCut({
+                facetAddress: address(ercFacet),
+                action: FacetCutAction.Add,
+                functionSelectors: generateSelectors("ERC721Facet")
             })
         );
 
@@ -79,27 +85,31 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
     }
 
     function testSignature() public {
-        bytes32 ethHash = keccak256(abi.encode(address(ercFacet), 1, 1e18));
+        bytes32 ethHash = keccak256(abi.encode(address(ercFacet), 0, 1e18));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(buyerKey, ethHash);
         address signer = ecrecover(ethHash, v, r, s);
         assertEq(signer, buyer);
     }
 
     function testOwner() public {
+        ERC721Facet(address(diamond)).mint(buyer);
         vm.startPrank(buyer);
-        bytes32 mHash = keccak256(abi.encode(address(ercFacet), 1, 1e18));
+        bytes32 mHash = keccak256(
+            abi.encode(address(ERC721Facet(address(diamond))), 0, 1e18)
+        );
         mHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n32", mHash)
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(buyerKey, mHash);
         Signature = bytes.concat(r, s, bytes1(v));
+
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(erc721MarketPlaceFacet),
+            address(ERC721MarketplaceFacet(address(diamond))),
             true
         );
         ERC721MarketplaceFacet(address(diamond)).createOrder({
-            _tokenAddress: address(ercFacet),
-            _tokenId: 1,
+            _tokenAddress: address(ERC721Facet(address(diamond))),
+            _tokenId: 0,
             _price: 1 ether,
             _signature: bytes(Signature),
             _deadline: block.timestamp + 200
@@ -108,17 +118,64 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         vm.stopPrank();
     }
 
+    function testFailNotOwner() public {
+        (address test, uint testKey) = makeAddrAndKey("add");
+        vm.startPrank(test);
+        bytes32 mHash = keccak256(
+            abi.encode(address(ERC721Facet(address(diamond))), 1, 1e18)
+        );
+        mHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", mHash)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(testKey, mHash);
+        Signature = bytes.concat(r, s, bytes1(v));
+        ERC721Facet(address(diamond)).setApprovalForAll(
+            address(ERC721MarketplaceFacet(address(diamond))),
+            true
+        );
+        ERC721MarketplaceFacet(address(diamond)).createOrder({
+            _tokenAddress: address(ERC721Facet(address(diamond))),
+            _tokenId: 1,
+            _price: 1 ether,
+            _signature: bytes(Signature),
+            _deadline: block.timestamp + 3600
+        });
+        vm.stopPrank();
+    }
+
+    function testApproved() public {
+        testOwner();
+        address buyerofNFT = makeAddr("buyerofNFT");
+        vm.deal(buyerofNFT, 1 ether);
+        vm.startPrank(buyerofNFT);
+        ERC721Facet(address(diamond)).setApprovalForAll(
+            address(ERC721MarketplaceFacet(address(diamond))),
+            true
+        );
+        uint256 initialSellerBalance = buyer.balance;
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 1 ether}(
+            0
+        );
+        uint256 finalSellerBalance = buyer.balance;
+        assertTrue(
+            finalSellerBalance > initialSellerBalance,
+            "Seller's balance should increase"
+        );
+    }
+
     function testFailPriceCorrect() public {
         testOwner();
         address buyerofNFT = makeAddr("buyerofNFT");
         vm.deal(buyerofNFT, 1 ether);
         vm.startPrank(buyerofNFT);
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(erc721MarketPlaceFacet),
+            address(ERC721MarketplaceFacet(address(diamond))),
             true
         );
         uint256 initialSellerBalance = buyer.balance;
-        erc721MarketPlaceFacet.executeOrder{value: 2 ether}(1);
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 2 ether}(
+            1
+        );
         uint256 finalSellerBalance = buyer.balance;
         assertFalse(
             finalSellerBalance > initialSellerBalance,
@@ -133,10 +190,12 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         vm.deal(buyerofNFT, 1 ether);
         vm.startPrank(buyerofNFT);
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(erc721MarketPlaceFacet),
+            address(ERC721MarketplaceFacet(address(diamond))),
             true
         );
-        erc721MarketPlaceFacet.executeOrder{value: 1 ether}(1);
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 1 ether}(
+            1
+        );
         vm.expectRevert("Order expired");
     }
 
@@ -146,11 +205,13 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         vm.deal(buyerofNFT, 1 ether);
         vm.startPrank(buyerofNFT);
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(erc721MarketPlaceFacet),
+            address(ERC721MarketplaceFacet(address(diamond))),
             true
         );
-        erc721MarketPlaceFacet.executeOrder{value: 1 ether}(1);
-        assertTrue(buyer.balance > 0, "valid order");
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 1 ether}(
+            0
+        );
+        assertEq(ERC721Facet(address(diamond)).balanceOf(buyerofNFT), 1);
     }
 
     function testFailInvalidOrder() public {
@@ -159,10 +220,12 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         vm.deal(buyerofNFT, 1 ether);
         vm.startPrank(buyerofNFT);
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(erc721MarketPlaceFacet),
+            address(ERC721MarketplaceFacet(address(diamond))),
             true
         );
-        erc721MarketPlaceFacet.executeOrder{value: 1 ether}(1);
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 1 ether}(
+            1
+        );
         assertFalse(buyer.balance > 0, "Invalid order");
     }
 
@@ -172,10 +235,12 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         vm.deal(buyerofNFT, 2 ether);
         vm.startPrank(buyerofNFT);
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(erc721MarketPlaceFacet),
+            address(ERC721MarketplaceFacet(address(diamond))),
             true
         );
-        erc721MarketPlaceFacet.executeOrder{value: 1 ether}(1);
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 1 ether}(
+            0
+        );
         assertTrue(buyer.balance > 0, "Order active");
     }
 
@@ -185,11 +250,15 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         vm.deal(buyerofNFT, 2 ether);
         vm.startPrank(buyerofNFT);
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(erc721MarketPlaceFacet),
+            address(ERC721MarketplaceFacet(address(diamond))),
             true
         );
-        erc721MarketPlaceFacet.executeOrder{value: 1 ether}(1);
-        erc721MarketPlaceFacet.executeOrder{value: 1 ether}(1);
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 1 ether}(
+            1
+        );
+        ERC721MarketplaceFacet(address(diamond)).executeOrder{value: 1 ether}(
+            1
+        );
         vm.expectRevert("Order inactive");
     }
 

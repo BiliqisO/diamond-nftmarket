@@ -54,7 +54,7 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         );
         cut[2] = (
             FacetCut({
-                facetAddress: address(ownerF),
+                facetAddress: address(ercFacet),
                 action: FacetCutAction.Add,
                 functionSelectors: generateSelectors("ERC721Facet")
             })
@@ -69,7 +69,7 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
 
     function testMint() public {
         ERC721Facet(address(diamond)).mint(address(1));
-        assertEq(ERC721Facet(address(diamond)).ownerOf(1), address(1));
+        assertEq(ERC721Facet(address(diamond)).ownerOf(0), address(1));
     }
 
     function testName() public {
@@ -116,18 +116,18 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         ERC721Facet(address(diamond)).mint(address(1));
         vm.startPrank(address(1));
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(address(1)),
+            address(address(this)),
             true
         );
-        ERC721Facet(address(diamond)).transferFrom(address(1), address(2), 1);
-        assertEq(ERC721Facet(address(diamond)).ownerOf(1), address(2));
+        ERC721Facet(address(diamond)).transferFrom(address(1), address(2), 0);
+        assertEq(ERC721Facet(address(diamond)).ownerOf(0), address(2));
         vm.stopPrank();
     }
 
     function testFailTransferFrom() public {
         ERC721Facet(address(diamond)).mint(address(1));
         vm.startPrank(address(1));
-        ERC721Facet(address(diamond)).transferFrom(address(1), address(2), 1);
+        ERC721Facet(address(diamond)).transferFrom(address(1), address(2), 0);
         assertEq(ERC721Facet(address(diamond)).ownerOf(1), address(1));
         vm.stopPrank();
     }
@@ -136,15 +136,15 @@ contract DiamondDeployer is DiamondUtils, IDiamondCut {
         ERC721Facet(address(diamond)).mint(address(1));
         vm.startPrank(address(1));
         ERC721Facet(address(diamond)).setApprovalForAll(
-            address(address(1)),
+            address(address(this)),
             true
         );
         ERC721Facet(address(diamond)).safeTransferFrom(
             address(1),
             address(2),
-            1
+            0
         );
-        assertEq(ERC721Facet(address(diamond)).ownerOf(1), address(2));
+        assertEq(ERC721Facet(address(diamond)).ownerOf(0), address(2));
         vm.stopPrank();
     }
 
